@@ -11,7 +11,7 @@ if (!file.exists("data")) {
 unzip("activity.zip", exdir="./data", overwrite=T)
 
 # Read in the data:
-data = read.csv("./data/activity.csv")
+data = read.csv("./data/activity.csv", colClasses=c("integer", "Date", "numeric"))
 
 ```
 
@@ -31,8 +31,13 @@ The mean total daily steps taken is `r mean(data.groupedby.date$steps)`.
 The median total daily steps taken is `r median(data.groupedby.date$steps)`
 
 ## What is the average daily activity pattern?
+```{r}
+# Create a data structure that finds average daily steps by time interval
+data.groupedby.interval = aggregate(steps ~ interval, mean, data=data)
 
-
+# Plot the average daily steps by interval in a time series:
+plot(data.groupedby.interval$interval, data.groupedby.interval$steps, type="l")
+```
 
 ## Imputing missing values
 
