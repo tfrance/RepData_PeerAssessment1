@@ -1,0 +1,76 @@
+---
+title: "Health and Economic Impact of Extreme Weather in the US 1950-2011"
+output: html_document
+---
+
+## Synopsis
+Extreme weather events in the US (e.g. tornados, tropical storms, floods, heat waves) can have a significant health and economic impact on the population.  In this study we will use US storm data (1950-2011) from the Nation Oceanic and Atmospheric Administration (NOAA) to answer the following questions:
+
+1. Which types of events are most harmful with respect to population health?
+2. Which types of events have the greatest economic consequences?
+
+## Loading and Processing the Data
+We load the data from a URL and read it into a data frame:
+```{r, cache=T}
+# Download the data:
+if(!file.exists("StormData.bz2")){
+  fileurl = "https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2"
+  download.file(fileurl, destfile = "StormData.bz2", method = "curl", mode = "wb")  
+}
+# Read in the data:
+data = read.csv(bzfile("StormData.bz2"))
+```
+We are interested in comparing health and economic costs across event type, as coded in EVTYPE.  However, because this factor has > 800 levels, we will simplify the analysis by grouping these into the following 9 categories: HEAT, COLD, FIRE, FLOOD, WIND, HAIL, LIGHTNING, TORNADO and OTHER.  These will be captured in a factor variable, EVCATEGORY:
+```{r, cache=T}
+# Uppercase EVTYPE values for easier matching:
+data$EVTYPE = toupper(data$EVTYPE)
+# Create a new factor variable EVCATEGORY and set value by keyword match in EVTYPE:
+data$EVCATEGORY <- "OTHER"
+data$EVCATEGORY[grep("HEAT|HOT|DROUGHT", data$EVTYPE)] <- "HEAT"
+data$EVCATEGORY[grep("COOL|COLD|FREEZE|FREEZING|WINTER|WINTERY|SLEET|SNOW", data$EVTYPE)] <- "COLD"
+data$EVCATEGORY[grep("FIRE", data$EVTYPE)] <- "FIRE"
+data$EVCATEGORY[grep("FLOOD|RAIN|PRECIPITATION", data$EVTYPE)] <- "FLOOD"
+data$EVCATEGORY[grep("HAIL", data$EVTYPE)] <- "HAIL"
+data$EVCATEGORY[grep("LIGHTNING", data$EVTYPE)] <- "LIGHTNING"
+data$EVCATEGORY[grep("HURRICANE|TROPICAL|WIND|WINDS", data$EVTYPE)] <- "WIND"
+data$EVCATEGORY[grep("TORNADO|SHARKNADO", data$EVTYPE)] <- "TORNADO"
+table(data$EVCATEGORY)
+```
+Cost of damage to property (PROPDMG) and crops (CROPDMG) are captured in US dollars.  However, the figures are expressed in association with two other columns of exponential multipliers (PROPDMGEXP, CROPDMGEXP). We will create two additional variables PROPDMGCOST and CROPDMGCOST that represent the values multiplied by their corresponding exponent.
+```{r, cache=T}
+# Associate a numeric multiplier for each level in factors *DMGEXP
+mult <- c(1e2,1e2,1e3,1e3,1e6,1e6,1e9,1e9)
+names(mult) <- c("h","H","k","K","m","M","b","B")
+
+data$PROPDMGCOST = data$PROPDMG * mult[as.character(data$PROPDMGEXP)]
+data$CROPDMGCOST = data$CROPDMG * mult[as.character(data$CROPDMGEXP)]
+```
+## Data Analysis
+First, we calculate the total number of fatalities and injuries by event category (EVCATEGORY)
+```{r, cache=T}
+casualties = setNames(aggregate(data$FATALITIES + data$INJURIES ~ data$EVCATEGORY, sum, data=data), c("CATEGORY", "TOTAL"))
+# order descending
+casualties = casualties[with(casualties, order(-casualties$TOTAL)), ]
+casualties
+# calculate proportion of greatest contributor
+tornado.proportion = casualties$TOTAL[casualties$CATEGORY == "TORNADO"]/sum(casualties$TOTAL) * 100
+```
+Next, we calculate the total costs from damage to property and crops by event category
+```{r, cache=T}
+damage = setNames(aggregate(data$PROPDMGCOST + data$CROPDMGCOST ~ data$EVCATEGORY, sum, data=data), c("CATEGORY", "TOTAL"))
+# order descending
+damage = damage[with(damage, order(-damage$TOTAL)), ]
+damage
+# calculate proportion of greatest contributor
+flood.proportion = damage$TOTAL[damage$CATEGORY == "FLOOD"]/sum(damage$TOTAL) * 100
+
+```
+## Results
+From this simple analysis, it is easy to determine that the greatest weather-related health risk to the US population is due to tornadoes, tropical storms ("wind") and excessive heat. Tornados are the greatest health risk, accounting for `r tornado.proportion` percent of total casualties. The greatest weather-related economic risk to the US population is due to damage from floods, tropical storms, and tornadoes. Flooding accounts for `r flood.proportion` percent of the total cost. The distinctions among categories are somewhat indistinct, e.g. the distinction between tropical storms and floods (since the former is a cause of the latter), but serves to identify broad areas of risk.
+
+```{r, cache=T}
+library(ggplot2)
+qplot(x=CATEGORY, y=TOTAL, data=casualties, geom="bar", stat="identity") + theme(axis.text.x=element_text(angle=90, hjust=1)) + labs(title="US Weather-Related Casualities by Category, 1950-2011", y="Total Casualties (Fatalities + Injuries)", x="")
+
+qplot(x=CATEGORY, y=TOTAL/1e9, data=damage, geom="bar", stat="identity") + theme(axis.text.x=element_text(angle=90, hjust=1)) + labs(title="Cost of US Weather-Related Damage by Category, 1950-2011", y="Total Cost (Billions)", x="")
+```
